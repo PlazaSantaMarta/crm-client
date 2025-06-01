@@ -17,11 +17,13 @@ import {
   Dialog,
   DialogTitle,
   DialogContent,
-  DialogActions
+  DialogActions,
+  SnackbarContent
 } from '@mui/material';
 import {
   Send as SendIcon,
-  Refresh as RefreshIcon
+  Refresh as RefreshIcon,
+  UploadFile as UploadFileIcon // <-- Nueva importación: Ícono para el botón de importar archivos
 } from '@mui/icons-material';
 import {
   fetchContacts,
@@ -37,12 +39,19 @@ function Contacts() {
   const [snackbarOpen, setSnackbarOpen] = useState(false);
   const [snackbarMessage, setSnackbarMessage] = useState('');
   const [showWelcomeDialog, setShowWelcomeDialog] = useState(false);
+  // <-- Nuevo estado: Para almacenar temporalmente el archivo que el usuario selecciona
+  const [selectedFile, setSelectedFile] = useState(null);
+  const [contactosTxt, setContactosTxt] = useState([]);
+  const [mostrarContactosTxt, setMostrarContactosTxt] = useState(false);
 
   useEffect(() => {
     const params = new URLSearchParams(location.search);
     const authStatus = params.get('auth');
     const authError = params.get('error');
 
+    if (contactosTxt.length >= 1) {
+      setMostrarContactosTxt(true)
+    }
     if (authStatus === 'success') {
       setShowWelcomeDialog(true);
       window.history.replaceState({}, document.title, '/contacts');
@@ -52,7 +61,11 @@ function Contacts() {
       setSnackbarOpen(true);
       window.history.replaceState({}, document.title, '/contacts');
     }
-  }, [location, dispatch]);
+  }, [location, dispatch, contactosTxt]);
+
+  useEffect(() => {
+  console.log('contactosTxt actualizado:', contactosTxt);
+}, [contactosTxt]);
 
   const handleRefreshContacts = () => {
     dispatch(fetchContacts());
@@ -68,6 +81,67 @@ function Contacts() {
     }
   };
 
+  // <-- Nueva función: Se encarga de manejar la selección y lectura del archivo
+  const handleFileChange = (event) => {
+    const file = event.target.files[0];
+    if (file) {
+      setSelectedFile(file);
+
+      const reader = new FileReader();
+
+      reader.onload = (e) => {
+        const fileContent = e.target.result;
+
+        // Dividir el contenido por líneas, eliminar espacios y líneas vacías
+        const lines = fileContent
+          .split(/\r?\n/)
+          .map(line => line.trim())
+          .filter(line => line !== '');
+
+        // Verificar si el archivo está vacío o sin datos válidos
+        if (lines.length === 0) {
+          alert(`El archivo está vacío o no contiene datos válidos.`);
+          return;
+        }
+
+        // Verificar que cada línea sea un número válido
+        const allValid = lines.every(line => /^[0-9]+$/.test(line));
+
+        if (!allValid) {
+          alert(`Error: El archivo debe contener solo números, uno por línea.`);
+          return;
+        }
+
+        const numberArray = lines; // o lines.map(Number) si querés que sean enteros
+
+        localStorage.setItem("numerosImportados", JSON.stringify(numberArray));
+
+        const nuevosContactos = numberArray.map((numero, index) => ({
+          id: `contact-${Date.now()}-${index}`,
+          phone: numero,
+          name: `Contacto ${index + 1}`,
+        }));
+
+        console.log(nuevosContactos)
+
+        setContactosTxt(prev => [...prev, ...nuevosContactos]);
+
+        console.log("Números importados:", numberArray);
+
+        alert(`Archivo "${file.name}" importado correctamente. ${numberArray.length} números cargados.`);
+      };
+
+      reader.onerror = (e) => {
+        console.error("Error al leer el archivo:", e.target.error);
+        alert(`Error al leer el archivo: ${e.target.error.message}`);
+      };
+
+      reader.readAsText(file);
+    }
+
+    event.target.value = '';
+  };
+
   return (
     <Box
       sx={{
@@ -80,6 +154,25 @@ function Contacts() {
       <Box display="flex" justifyContent="space-between" alignItems="center" mb={3}>
         <Typography variant="h4">Contactos</Typography>
         <Box>
+          {/* <-- Nuevo elemento: Input de tipo archivo oculto para la importación */}
+          <input
+            type="file"
+            id="import-contacts-file-input" // ID único para referenciarlo desde el botón visible
+            accept=".txt,.tex" // Filtra los tipos de archivo que se pueden seleccionar
+            style={{ display: 'none' }} // Oculta el elemento input nativo
+            onChange={handleFileChange} // Llama a la nueva función cuando se selecciona un archivo
+          />
+          {/* <-- Nuevo Botón: Visible para el usuario, que activa el input oculto */}
+          <Button
+            variant="contained"
+            color="secondary"
+            onClick={() => document.getElementById('import-contacts-file-input').click()} // Simula un clic en el input file oculto
+            sx={{ mr: 2 }}
+            startIcon={<UploadFileIcon />} // Usa el ícono de "subir archivo"
+          >
+            Importar Contactos
+          </Button>
+
           <Button
             variant="contained"
             color="secondary"
@@ -101,8 +194,8 @@ function Contacts() {
 
       <Box mb={2}>
         <Typography variant="subtitle1" color="textSecondary">
-          {selectedContactIds.length > 0 
-            ? `Contactos seleccionados (${selectedContactIds.length}/${items.length})` 
+          {selectedContactIds.length > 0
+            ? `Contactos seleccionados (${selectedContactIds.length}/${items.length})`
             : `Ningún contacto seleccionado (0/${items.length})`}
         </Typography>
       </Box>
@@ -114,8 +207,8 @@ function Contacts() {
       )}
 
       {status === 'failed' && (
-        <Alert 
-          severity="error" 
+        <Alert
+          severity="error"
           action={
             <Button color="inherit" size="small" onClick={handleRefreshContacts}>
               Reintentar
@@ -132,15 +225,53 @@ function Contacts() {
         </Alert>
       )}
 
+      {mostrarContactosTxt && contactosTxt.length > 0 && (
+        <Grid container spacing={3}>
+          {contactosTxt.map((contact) => {
+            const isSelected = selectedContactIds.includes(contact.id);
+            return (
+              <Grid item xs={12} sm={6} md={4} key={contact.id}>
+                <Card
+                  sx={{
+                    backgroundColor: isSelected ? 'rgba(33, 150, 243, 0.08)' : 'rgba(0,0,0,0)',
+                    border: isSelected ? '2px solid #2196F3' : '1px solid rgba(0, 0, 0, 0.12)',
+                    transition: 'all 0.3s ease',
+                    cursor: 'pointer'
+                  }}
+                  onClick={() => handleSelectContact(contact.id)}
+                >
+                  <CardContent>
+                    <Box display="flex" alignItems="center">
+                      <Checkbox
+                        checked={isSelected}
+                        onChange={(e) => {
+                          e.stopPropagation();
+                          handleSelectContact(contact.id);
+                        }}
+                        color="primary"
+                      />
+                      <Box flex={1}>
+                        <Typography variant="h6">{contact.name}</Typography>
+                        <Typography color="textSecondary">{contact.phoneNumber}</Typography>
+                      </Box>
+                    </Box>
+                  </CardContent>
+                </Card>
+              </Grid>
+            );
+          })}
+        </Grid>
+      )}
+
       {status === 'succeeded' && items.length > 0 && (
         <Grid container spacing={3}>
           {items.map((contact) => {
             const isSelected = selectedContactIds.includes(contact.id);
             return (
               <Grid item xs={12} sm={6} md={4} key={contact.id}>
-                <Card 
+                <Card
                   sx={{
-                    backgroundColor: isSelected ? 'rgba(33, 150, 243, 0.08)' : 'transparent',
+                    backgroundColor: isSelected ? 'rgba(33, 150, 243, 0.08)' : 'rgba(0,0,0,0)',
                     border: isSelected ? '2px solid #2196F3' : '1px solid rgba(0, 0, 0, 0.12)',
                     transition: 'all 0.3s ease',
                     cursor: 'pointer'
@@ -173,8 +304,8 @@ function Contacts() {
       <Box sx={{ position: 'fixed', bottom: 16, right: 16 }}>
         <Tooltip title={selectedContactIds.length > 0 ? 'Sincronizar seleccionados' : 'Selecciona contactos para sincronizar'}>
           <span>
-            <Fab 
-              color="secondary" 
+            <Fab
+              color="secondary"
               onClick={handleSyncSelected}
               disabled={selectedContactIds.length === 0}
               sx={{
@@ -218,12 +349,18 @@ function Contacts() {
         </DialogActions>
       </Dialog>
 
-      <Snackbar
+      {/* <Snackbar
         open={snackbarOpen}
         autoHideDuration={6000}
         onClose={() => setSnackbarOpen(false)}
         message={snackbarMessage}
-      />
+        ContentProps={{
+          style: {
+            backgroundColor: '#323232',
+            color: '#fff'
+          }
+        }}
+      /> */}
     </Box>
   );
 }
