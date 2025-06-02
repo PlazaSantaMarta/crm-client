@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useDispatch, useSelector } from 'react-redux';
 import {
   Box,
@@ -44,7 +44,8 @@ function Sync() {
   const dispatch = useDispatch();
   const theme = useTheme(); // Inicializar useTheme para acceder a los colores del tema
   const { status, error } = useSelector((state) => state.sync);
-  const { items: contacts, selectedContactIds } = useSelector((state) => state.contacts);
+  const { items: googleContacts, selectedContactIds } = useSelector((state) => state.contacts);
+  const [allContacts, setAllContacts] = useState([]);
   const [isConnecting, setIsConnecting] = useState(false);
   const [isSyncing, setIsSyncing] = useState(false);
   const [syncResults, setSyncResults] = useState({ contacts: [], processed: 0, total: 0 });
@@ -61,9 +62,16 @@ function Sync() {
   const [loadingStatuses, setLoadingStatuses] = useState(false);
   const [showKommoModal, setShowKommoModal] = useState(false);
 
+  useEffect(() => {
+    // Obtener contactos importados del localStorage
+    const importedContacts = JSON.parse(localStorage.getItem('importedContacts') || '[]');
+    // Combinar contactos de Google con los importados
+    setAllContacts([...googleContacts, ...importedContacts]);
+  }, [googleContacts]);
+
   const contactsToSync = selectedContactIds.length > 0
-    ? contacts.filter(contact => selectedContactIds.includes(contact.id))
-    : contacts;
+    ? allContacts.filter(contact => selectedContactIds.includes(contact.id))
+    : allContacts;
 
   const handleGetPipelines = async () => {
     try {
@@ -110,11 +118,22 @@ function Sync() {
       setSyncComplete(false);
       setProcessedPairs([]);
 
+      // Preparar los contactos para sincronizar
+      const contactsToProcess = contactsToSync.map(contact => ({
+        id: contact.id,
+        name: contact.name,
+        phoneNumber: contact.phone || contact.phoneNumber, // Manejar ambos formatos
+        email: contact.email || '',
+        source: contact.phone ? 'imported' : 'google' // Identificar la fuente del contacto
+      }));
+
       const response = await fetch('https://crm-server-q3jg.onrender.com/api/kommo/generate-leads', {
         method: 'POST',
         headers: getAuthHeaders(),
         body: JSON.stringify({
           pipeline_id: selectedPipeline,
+          status_id: selectedStatus || null,
+          contacts: contactsToProcess, // Enviar los contactos procesados
           contact_ids: selectedContactIds.length > 0 ? selectedContactIds : null
         })
       });
@@ -150,7 +169,7 @@ function Sync() {
     } catch (error) {
       console.error('Error:', error);
       setSyncError(error.message);
-      if (error.message.includes('Token') || response.status === 401) {
+      if (error.message.includes('Token') || response?.status === 401) {
         setShowKommoModal(true);
       }
     } finally {
@@ -240,7 +259,7 @@ function Sync() {
                     </Typography>
                   ) : (
                     <Typography variant="body2" color="textSecondary">
-                      (Se sincronizarán todos los contactos)
+                      (Se sincronizarán todos los contactos: {allContacts.length})
                     </Typography>
                   )}
                 </Box>
@@ -350,7 +369,7 @@ function Sync() {
                   color="primary"
                   startIcon={isSyncing ? <CircularProgress size={24} color="inherit" /> : <SyncIcon />}
                   onClick={handleSync}
-                  disabled={isSyncing || contacts.length === 0 || !selectedPipeline}
+                  disabled={isSyncing || contactsToSync.length === 0 || !selectedPipeline}
                   fullWidth
                   sx={{ py: 1.5 }}
                 >

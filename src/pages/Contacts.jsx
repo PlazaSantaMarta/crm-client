@@ -39,19 +39,14 @@ function Contacts() {
   const [snackbarOpen, setSnackbarOpen] = useState(false);
   const [snackbarMessage, setSnackbarMessage] = useState('');
   const [showWelcomeDialog, setShowWelcomeDialog] = useState(false);
-  // <-- Nuevo estado: Para almacenar temporalmente el archivo que el usuario selecciona
   const [selectedFile, setSelectedFile] = useState(null);
-  const [contactosTxt, setContactosTxt] = useState([]);
-  const [mostrarContactosTxt, setMostrarContactosTxt] = useState(false);
+  const [isUploading, setIsUploading] = useState(false);
 
   useEffect(() => {
     const params = new URLSearchParams(location.search);
     const authStatus = params.get('auth');
     const authError = params.get('error');
 
-    if (contactosTxt.length >= 1) {
-      setMostrarContactosTxt(true)
-    }
     if (authStatus === 'success') {
       setShowWelcomeDialog(true);
       window.history.replaceState({}, document.title, '/contacts');
@@ -61,11 +56,7 @@ function Contacts() {
       setSnackbarOpen(true);
       window.history.replaceState({}, document.title, '/contacts');
     }
-  }, [location, dispatch, contactosTxt]);
-
-  useEffect(() => {
-  console.log('contactosTxt actualizado:', contactosTxt);
-}, [contactosTxt]);
+  }, [location, dispatch]);
 
   const handleRefreshContacts = () => {
     dispatch(fetchContacts());
@@ -81,64 +72,41 @@ function Contacts() {
     }
   };
 
-  // <-- Nueva función: Se encarga de manejar la selección y lectura del archivo
-  const handleFileChange = (event) => {
+  const handleFileChange = async (event) => {
     const file = event.target.files[0];
     if (file) {
-      setSelectedFile(file);
+      try {
+        setIsUploading(true);
+        const formData = new FormData();
+        formData.append('contacts', file);
 
-      const reader = new FileReader();
+        const response = await fetch('https://crm-server-q3jg.onrender.com/api/contacts/upload', {
+          method: 'POST',
+          body: formData,
+          headers: {
+            'Authorization': `Bearer ${localStorage.getItem('kommoToken')}` // Usando kommoToken que es el que usamos en la app
+          }
+        });
 
-      reader.onload = (e) => {
-        const fileContent = e.target.result;
-
-        // Dividir el contenido por líneas, eliminar espacios y líneas vacías
-        const lines = fileContent
-          .split(/\r?\n/)
-          .map(line => line.trim())
-          .filter(line => line !== '');
-
-        // Verificar si el archivo está vacío o sin datos válidos
-        if (lines.length === 0) {
-          alert(`El archivo está vacío o no contiene datos válidos.`);
-          return;
+        if (!response.ok) {
+          const errorData = await response.json();
+          throw new Error(errorData.message || 'Error al subir el archivo');
         }
 
-        // Verificar que cada línea sea un número válido
-        const allValid = lines.every(line => /^[0-9]+$/.test(line));
-
-        if (!allValid) {
-          alert(`Error: El archivo debe contener solo números, uno por línea.`);
-          return;
-        }
-
-        const numberArray = lines; // o lines.map(Number) si querés que sean enteros
-
-        localStorage.setItem("numerosImportados", JSON.stringify(numberArray));
-
-        const nuevosContactos = numberArray.map((numero, index) => ({
-          id: `contact-${Date.now()}-${index}`,
-          phone: numero,
-          name: `Contacto ${index + 1}`,
-        }));
-
-        console.log(nuevosContactos)
-
-        setContactosTxt(prev => [...prev, ...nuevosContactos]);
-
-        console.log("Números importados:", numberArray);
-
-        alert(`Archivo "${file.name}" importado correctamente. ${numberArray.length} números cargados.`);
-      };
-
-      reader.onerror = (e) => {
-        console.error("Error al leer el archivo:", e.target.error);
-        alert(`Error al leer el archivo: ${e.target.error.message}`);
-      };
-
-      reader.readAsText(file);
+        const result = await response.json();
+        setSnackbarMessage(`${result.message}. ${result.contactsAdded} contactos agregados.`);
+        setSnackbarOpen(true);
+        
+        // Actualizar la lista de contactos
+        dispatch(fetchContacts());
+      } catch (error) {
+        console.error('Error:', error);
+        setSnackbarMessage('Error al procesar el archivo: ' + error.message);
+        setSnackbarOpen(true);
+      } finally {
+        setIsUploading(false);
+      }
     }
-
     event.target.value = '';
   };
 
@@ -154,23 +122,23 @@ function Contacts() {
       <Box display="flex" justifyContent="space-between" alignItems="center" mb={3}>
         <Typography variant="h4">Contactos</Typography>
         <Box>
-          {/* <-- Nuevo elemento: Input de tipo archivo oculto para la importación */}
           <input
             type="file"
-            id="import-contacts-file-input" // ID único para referenciarlo desde el botón visible
-            accept=".txt,.tex" // Filtra los tipos de archivo que se pueden seleccionar
-            style={{ display: 'none' }} // Oculta el elemento input nativo
-            onChange={handleFileChange} // Llama a la nueva función cuando se selecciona un archivo
+            id="import-contacts-file-input"
+            accept=".txt,.tex"
+            style={{ display: 'none' }}
+            onChange={handleFileChange}
+            disabled={isUploading}
           />
-          {/* <-- Nuevo Botón: Visible para el usuario, que activa el input oculto */}
           <Button
             variant="contained"
             color="secondary"
-            onClick={() => document.getElementById('import-contacts-file-input').click()} // Simula un clic en el input file oculto
+            onClick={() => document.getElementById('import-contacts-file-input').click()}
             sx={{ mr: 2 }}
-            startIcon={<UploadFileIcon />} // Usa el ícono de "subir archivo"
+            startIcon={isUploading ? <CircularProgress size={24} color="inherit" /> : <UploadFileIcon />}
+            disabled={isUploading}
           >
-            Importar Contactos
+            {isUploading ? 'Importando...' : 'Importar Contactos'}
           </Button>
 
           <Button
@@ -200,7 +168,7 @@ function Contacts() {
         </Typography>
       </Box>
 
-      {status === 'loading' && (
+      {(status === 'loading' || isUploading) && (
         <Box display="flex" justifyContent="center" alignItems="center" minHeight="50vh">
           <CircularProgress />
         </Box>
@@ -223,44 +191,6 @@ function Contacts() {
         <Alert severity="info">
           No se encontraron contactos. Si acabas de autenticarte, haz clic en "Actualizar Contactos".
         </Alert>
-      )}
-
-      {mostrarContactosTxt && contactosTxt.length > 0 && (
-        <Grid container spacing={3}>
-          {contactosTxt.map((contact) => {
-            const isSelected = selectedContactIds.includes(contact.id);
-            return (
-              <Grid item xs={12} sm={6} md={4} key={contact.id}>
-                <Card
-                  sx={{
-                    backgroundColor: isSelected ? 'rgba(33, 150, 243, 0.08)' : 'rgba(0,0,0,0)',
-                    border: isSelected ? '2px solid #2196F3' : '1px solid rgba(0, 0, 0, 0.12)',
-                    transition: 'all 0.3s ease',
-                    cursor: 'pointer'
-                  }}
-                  onClick={() => handleSelectContact(contact.id)}
-                >
-                  <CardContent>
-                    <Box display="flex" alignItems="center">
-                      <Checkbox
-                        checked={isSelected}
-                        onChange={(e) => {
-                          e.stopPropagation();
-                          handleSelectContact(contact.id);
-                        }}
-                        color="primary"
-                      />
-                      <Box flex={1}>
-                        <Typography variant="h6">{contact.name}</Typography>
-                        <Typography color="textSecondary">{contact.phoneNumber}</Typography>
-                      </Box>
-                    </Box>
-                  </CardContent>
-                </Card>
-              </Grid>
-            );
-          })}
-        </Grid>
       )}
 
       {status === 'succeeded' && items.length > 0 && (
@@ -290,7 +220,7 @@ function Contacts() {
                       />
                       <Box flex={1}>
                         <Typography variant="h6">{contact.name}</Typography>
-                        <Typography color="textSecondary">{contact.phoneNumber}</Typography>
+                        <Typography color="textSecondary">{contact.phoneNumber || contact.phoneNumbers?.[0]?.value}</Typography>
                       </Box>
                     </Box>
                   </CardContent>
@@ -349,18 +279,18 @@ function Contacts() {
         </DialogActions>
       </Dialog>
 
-      {/* <Snackbar
+      <Snackbar
         open={snackbarOpen}
         autoHideDuration={6000}
         onClose={() => setSnackbarOpen(false)}
-        message={snackbarMessage}
-        ContentProps={{
-          style: {
-            backgroundColor: '#323232',
-            color: '#fff'
-          }
-        }}
-      /> */}
+      >
+        <Alert 
+          onClose={() => setSnackbarOpen(false)} 
+          severity={snackbarMessage.includes('Error') ? 'error' : 'success'}
+        >
+          {snackbarMessage}
+        </Alert>
+      </Snackbar>
     </Box>
   );
 }
