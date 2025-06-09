@@ -6,7 +6,8 @@ import {
   Alert, Tabs, Tab
 } from '@mui/material';
 import { useTheme } from '@mui/material/styles';
-import api from '../config/api'; // Importar la instancia de axios
+import api from '../config/api';
+import authService from '../services/authService';
 
 const KommoModal = ({ isOpen, onClose, onSubmit }) => {
   const [activeTab, setActiveTab] = useState('login');
@@ -68,11 +69,8 @@ const KommoModal = ({ isOpen, onClose, onSubmit }) => {
 
       const { token, user, kommo_credentials } = response.data;
 
-      // Guardar el token en localStorage
-      localStorage.setItem('kommoToken', token);
-      
-      // Configurar el token en los headers por defecto de axios
-      api.defaults.headers.common['Authorization'] = `Bearer ${token}`;
+      // Usar el servicio de autenticación para manejar el token
+      authService.setToken(token);
       
       setSuccessMessage(activeTab === 'register' ? '¡Registro exitoso!' : '¡Conexión exitosa!');
       

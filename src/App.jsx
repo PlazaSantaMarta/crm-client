@@ -5,6 +5,7 @@ import CssBaseline from '@mui/material/CssBaseline';
 import { Provider } from 'react-redux';
 import { store } from './store';
 import { fetchContacts } from './store/slices/contactsSlice';
+import authService from './services/authService';
 
 import Layout from './components/Layout.jsx';
 import Dashboard from './pages/Dashboard.jsx';
@@ -142,6 +143,11 @@ function AppContent() {
 }
 
 function App() {
+  useEffect(() => {
+    // Inicializar la autenticación al cargar la app
+    authService.initializeAuth();
+  }, []);
+
   return (
     <Provider store={store}>
       <ThemeProvider theme={theme}>
