@@ -6,8 +6,7 @@ import {
   Alert, Tabs, Tab
 } from '@mui/material';
 import { useTheme } from '@mui/material/styles';
-import api from '../config/api';
-import authService from '../services/authService';
+import api from '../config/api'; // Importar la instancia de axios
 
 const KommoModal = ({ isOpen, onClose, onSubmit }) => {
   const [activeTab, setActiveTab] = useState('login');
@@ -67,16 +66,30 @@ const KommoModal = ({ isOpen, onClose, onSubmit }) => {
         }
       );
 
-      const { token, user, kommo_credentials } = response.data;
+      const { token, refreshToken, user, kommo_credentials } = response.data;
 
-      // Usar el servicio de autenticación para manejar el token
-      authService.setToken(token);
+      // Guardar los tokens JWT en localStorage
+      localStorage.setItem('token', token);
+      localStorage.setItem('refreshToken', refreshToken);
+      
+      // Guardar el token de kommo para compatibilidad
+      localStorage.setItem('kommoToken', token);
+      
+      // Configurar el token en los headers por defecto de axios
+      api.defaults.headers.common['Authorization'] = `Bearer ${token}`;
       
       setSuccessMessage(activeTab === 'register' ? '¡Registro exitoso!' : '¡Conexión exitosa!');
+      
+      // Guardar información del usuario en localStorage para rápido acceso
+      localStorage.setItem('user', JSON.stringify({
+        id: user.id,
+        username: user.username
+      }));
       
       // Llamar a onSubmit con los datos necesarios
       onSubmit({
         token,
+        refreshToken,
         user,
         kommo_credentials
       });
@@ -246,11 +259,17 @@ const KommoModal = ({ isOpen, onClose, onSubmit }) => {
           </Alert>
         )}
       </DialogContent>
-      <DialogActions sx={{ p: 2 }}>
+      <DialogActions sx={{ p: 2, borderTop: `1px solid ${theme.palette.divider}` }}>
         <Button 
           onClick={handleClose} 
-          color="primary"
-          disabled={isLoading}
+          color="secondary"
+          variant="outlined"
+          sx={{ 
+            mr: 1,
+            '&:hover': {
+              backgroundColor: 'rgba(255,255,255,0.05)',
+            }
+          }}
         >
           Cancelar
         </Button>
@@ -259,12 +278,17 @@ const KommoModal = ({ isOpen, onClose, onSubmit }) => {
           color="primary" 
           variant="contained"
           disabled={isLoading}
+          startIcon={isLoading && <CircularProgress size={20} color="inherit" />}
+          sx={{ 
+            minWidth: '120px',
+            position: 'relative',
+            '&:hover': {
+              transform: 'translateY(-2px)',
+              boxShadow: '0 4px 8px rgba(0,0,0,0.2)',
+            }
+          }}
         >
-          {isLoading ? (
-            <CircularProgress size={24} color="inherit" />
-          ) : (
-            activeTab === 'register' ? 'Registrarse' : 'Iniciar Sesión'
-          )}
+          {isLoading ? 'Procesando...' : (activeTab === 'register' ? 'Registrarse' : 'Iniciar Sesión')}
         </Button>
       </DialogActions>
     </Dialog>

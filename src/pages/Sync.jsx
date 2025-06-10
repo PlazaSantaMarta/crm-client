@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useDispatch, useSelector } from 'react-redux';
+import { useNavigate } from 'react-router-dom';
 import {
   Box,
   Button,
@@ -29,11 +30,13 @@ import {
   AccountTree as AccountTreeIcon
 } from '@mui/icons-material';
 import { syncContactsWithKommo } from '../store/slices/syncSlice';
+import { checkAuthStatus } from '../store/slices/authSlice';
 import api from '../config/api';
-import { useTheme } from '@mui/material/styles'; // Importar useTheme para acceder a theme.palette.divider
+import { useTheme } from '@mui/material/styles';
 
+// Usar el mismo token para todas las peticiones
 const getAuthHeaders = () => {
-  const token = localStorage.getItem('kommoToken');
+  const token = localStorage.getItem('token');
   return {
     'Content-Type': 'application/json',
     'Authorization': `Bearer ${token}`
@@ -42,9 +45,11 @@ const getAuthHeaders = () => {
 
 function Sync() {
   const dispatch = useDispatch();
-  const theme = useTheme(); // Inicializar useTheme para acceder a los colores del tema
+  const navigate = useNavigate();
+  const theme = useTheme();
   const { status, error } = useSelector((state) => state.sync);
   const { items: googleContacts, selectedContactIds } = useSelector((state) => state.contacts);
+  const { isAuthenticated } = useSelector((state) => state.auth);
   const [allContacts, setAllContacts] = useState([]);
   const [isConnecting, setIsConnecting] = useState(false);
   const [isSyncing, setIsSyncing] = useState(false);
@@ -62,6 +67,32 @@ function Sync() {
   const [loadingStatuses, setLoadingStatuses] = useState(false);
   const [showKommoModal, setShowKommoModal] = useState(false);
 
+  // Verificar autenticación al cargar el componente
+  useEffect(() => {
+    // Verificar si hay algún token de autenticación
+    const token = localStorage.getItem('token');
+    const kommoToken = localStorage.getItem('kommoToken');
+    const googleToken = localStorage.getItem('googleToken');
+    
+    if (!token && !kommoToken && !googleToken) {
+      navigate('/', { replace: true });
+      return;
+    }
+    
+    dispatch(checkAuthStatus());
+  }, [dispatch, navigate]);
+
+  // Redirigir si no está autenticado (por seguridad adicional)
+  useEffect(() => {
+    const hasAnyToken = localStorage.getItem('token') || 
+                        localStorage.getItem('kommoToken') || 
+                        localStorage.getItem('googleToken');
+                        
+    if (isAuthenticated === false && !hasAnyToken) {
+      navigate('/', { replace: true });
+    }
+  }, [isAuthenticated, navigate]);
+
   useEffect(() => {
     // Obtener contactos importados del localStorage
     const importedContacts = JSON.parse(localStorage.getItem('importedContacts') || '[]');
@@ -78,25 +109,18 @@ function Sync() {
       setLoadingPipelines(true);
       setSyncError(null);
 
-      const response = await fetch('https://crm-server-q3jg.onrender.com/api/kommo/pipelines', {
-        headers: getAuthHeaders()
-      });
+      // Usar api de axios en lugar de fetch para aprovechar los interceptores
+      const response = await api.get('/api/kommo/pipelines');
       
-      if (!response.ok) {
-        const data = await response.json();
-        throw new Error(data.error || 'Error al obtener los pipelines');
-      }
-
-      const data = await response.json();
-      if (data.success && data.pipelines) {
-        setPipelines(data.pipelines);
+      if (response.data.success && response.data.pipelines) {
+        setPipelines(response.data.pipelines);
       } else {
-        throw new Error(data.message || 'Error al obtener los pipelines');
+        throw new Error(response.data.message || 'Error al obtener los pipelines');
       }
     } catch (error) {
       console.error('Error:', error);
-      setSyncError(error.message);
-      if (error.message.includes('Token') || response.status === 401) {
+      setSyncError(error.response?.data?.error || error.message);
+      if (error.response?.status === 401) {
         setShowKommoModal(true);
       }
     } finally {
@@ -127,23 +151,15 @@ function Sync() {
         source: contact.phone ? 'imported' : 'google' // Identificar la fuente del contacto
       }));
 
-      const response = await fetch('https://crm-server-q3jg.onrender.com/api/kommo/generate-leads', {
-        method: 'POST',
-        headers: getAuthHeaders(),
-        body: JSON.stringify({
-          pipeline_id: selectedPipeline,
-          status_id: selectedStatus || null,
-          contacts: contactsToProcess, // Enviar los contactos procesados
-          contact_ids: selectedContactIds.length > 0 ? selectedContactIds : null
-        })
+      // Usar api de axios en lugar de fetch
+      const response = await api.post('/api/kommo/generate-leads', {
+        pipeline_id: selectedPipeline,
+        status_id: selectedStatus || null,
+        contacts: contactsToProcess,
+        contact_ids: selectedContactIds.length > 0 ? selectedContactIds : null
       });
 
-      if (!response.ok) {
-        const data = await response.json();
-        throw new Error(data.error || 'Error en la sincronización');
-      }
-
-      const data = await response.json();
+      const data = response.data;
 
       if (data.success && data.results) {
         const { contacts: syncedContacts, processed, total } = data.results;
@@ -168,8 +184,8 @@ function Sync() {
 
     } catch (error) {
       console.error('Error:', error);
-      setSyncError(error.message);
-      if (error.message.includes('Token') || response?.status === 401) {
+      setSyncError(error.response?.data?.error || error.message);
+      if (error.response?.status === 401) {
         setShowKommoModal(true);
       }
     } finally {
@@ -198,16 +214,10 @@ function Sync() {
       setLoadingStatuses(true);
       setSyncError(null);
 
-      const response = await fetch(`https://crm-server-q3jg.onrender.com/api/kommo/pipelines/${pipelineId}/statuses`, {
-        headers: getAuthHeaders()
-      });
+      // Usar api de axios en lugar de fetch
+      const response = await api.get(`/api/kommo/pipelines/${pipelineId}/statuses`);
       
-      if (!response.ok) {
-        const data = await response.json();
-        throw new Error(data.error || 'Error al obtener los estados del pipeline');
-      }
-
-      const data = await response.json();
+      const data = response.data;
       if (data.success && data.statuses) {
         setStatuses(data.statuses);
       } else {
@@ -215,8 +225,8 @@ function Sync() {
       }
     } catch (error) {
       console.error('Error:', error);
-      setSyncError(error.message);
-      if (error.message.includes('Token') || response.status === 401) {
+      setSyncError(error.response?.data?.error || error.message);
+      if (error.response?.status === 401) {
         setShowKommoModal(true);
       }
     } finally {

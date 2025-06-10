@@ -1,11 +1,10 @@
 import React, { useEffect } from 'react';
-import { BrowserRouter as Router, Routes, Route, useNavigate, useLocation } from 'react-router-dom';
+import { BrowserRouter as Router, Routes, Route, Navigate, useNavigate, useLocation } from 'react-router-dom';
 import { ThemeProvider, createTheme } from '@mui/material/styles';
 import CssBaseline from '@mui/material/CssBaseline';
-import { Provider } from 'react-redux';
+import { Provider, useSelector, useDispatch } from 'react-redux';
 import { store } from './store';
 import { fetchContacts } from './store/slices/contactsSlice';
-import authService from './services/authService';
 
 import Layout from './components/Layout.jsx';
 import Dashboard from './pages/Dashboard.jsx';
@@ -112,9 +111,11 @@ const theme = createTheme({
   },
 });
 
+// Componente para manejar la autenticación de Google
 function AuthHandler() {
   const navigate = useNavigate();
   const location = useLocation();
+  const dispatch = useDispatch();
 
   useEffect(() => {
     const params = new URLSearchParams(location.search);
@@ -123,15 +124,16 @@ function AuthHandler() {
     if (authStatus) {
       window.history.replaceState({}, document.title, window.location.pathname);
       if (authStatus === 'success') {
-        store.dispatch(fetchContacts());
+        dispatch(fetchContacts());
       }
       navigate('/');
     }
-  }, [location, navigate]);
+  }, [location, navigate, dispatch]);
 
   return null;
 }
 
+// Contenido principal de la aplicación
 function AppContent() {
   return (
     <Routes>
@@ -142,12 +144,8 @@ function AppContent() {
   );
 }
 
+// Componente principal de la aplicación
 function App() {
-  useEffect(() => {
-    // Inicializar la autenticación al cargar la app
-    authService.initializeAuth();
-  }, []);
-
   return (
     <Provider store={store}>
       <ThemeProvider theme={theme}>
