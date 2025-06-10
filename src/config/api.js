@@ -2,7 +2,7 @@ import axios from 'axios';
 
 // Create axios instance with default config
 const api = axios.create({
-  baseURL: '',  // Usar URL relativa para que funcione con el proxy de Vite
+  baseURL: 'https://crm-server-q3jg.onrender.com',  // Usar URL relativa para que funcione con el proxy de Vite
   timeout: 30000,
   headers: {
     'Accept': 'application/json',
