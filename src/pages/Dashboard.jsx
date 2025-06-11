@@ -135,7 +135,7 @@ function Dashboard() {
   // Función para conectar con Google
   const handleConnectGoogle = async () => {
     try {
-      const response = await api.get('/auth/google');
+      const response = await api.get('api/google');
       if (response.data?.authUrl) {
         // Abre la ventana de autenticación de Google
         const newWindow = window.open(response.data.authUrl, 'Google Auth', 'width=600,height=800,left=' + (window.screenX + (window.outerWidth - 600) / 2) + ',top=' + (window.screenY + (window.outerHeight - 800) / 2));
