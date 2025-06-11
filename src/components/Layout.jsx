@@ -1,7 +1,6 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
-import { useSelector, useDispatch } from 'react-redux';
-import { checkAuthStatus } from '../store/slices/authSlice';
+import { useSelector } from 'react-redux';
 import {
   AppBar,
   Box,
@@ -26,45 +25,28 @@ import {
 
 const drawerWidth = 260;
 
+const menuItems = [
+  { text: 'Dashboard', icon: <DashboardIcon />, path: '/', requiresAuth: false },
+  { text: 'Contactos', icon: <ContactsIcon />, path: '/contacts', requiresAuth: true },
+  { text: 'Sincronización', icon: <SyncIcon />, path: '/sync', requiresAuth: true },
+];
+
 function Layout({ children }) {
   const [mobileOpen, setMobileOpen] = useState(false);
   const navigate = useNavigate();
   const location = useLocation();
-  const dispatch = useDispatch();
-  
-  // Obtener estado de autenticación de Redux
-  const { isAuthenticated } = useSelector((state) => state.auth);
-  
-  // Verificar también tokens directamente para máxima compatibilidad
-  const [isUserAuthenticated, setIsUserAuthenticated] = useState(false);
-  
-  // Verificar estado de autenticación al cargar
-  useEffect(() => {
-    dispatch(checkAuthStatus());
-    
-    // Verificar tokens directamente
-    const hasGoogleToken = localStorage.getItem('googleToken') !== null;
-    const hasKommoToken = localStorage.getItem('kommoToken') !== null;
-    const hasToken = localStorage.getItem('token') !== null;
-    
-    // Usuario autenticado si tiene cualquiera de los tokens
-    setIsUserAuthenticated(hasGoogleToken || hasKommoToken || hasToken || isAuthenticated);
-  }, [dispatch, isAuthenticated]);
-  
-  // Determinar qué elementos del menú mostrar
-  const menuItems = [
-    { text: 'Dashboard', icon: <DashboardIcon />, path: '/', always: true },
-    { text: 'Contactos', icon: <ContactsIcon />, path: '/contacts', visible: isUserAuthenticated },
-    { text: 'Sincronización', icon: <SyncIcon />, path: '/sync', visible: isUserAuthenticated },
-  ];
+  const { status } = useSelector((state) => state.contacts);
+  const isAuthenticated = status === 'succeeded';
 
   const handleDrawerToggle = () => {
     setMobileOpen(!mobileOpen);
   };
 
-  const handleMenuClick = (path) => {
-    navigate(path);
-    setMobileOpen(false);
+  const handleMenuClick = (path, requiresAuth) => {
+    if (!requiresAuth || (requiresAuth && isAuthenticated)) {
+      navigate(path);
+      setMobileOpen(false);
+    }
   };
 
   const drawer = (
@@ -84,19 +66,21 @@ function Layout({ children }) {
         </Typography>
       </Toolbar>
       <List sx={{ flexGrow: 1 }}>
-        {menuItems
-          .filter(item => item.always || item.visible)
-          .map((item) => (
+        {menuItems.map((item) => {
+          const isDisabled = item.requiresAuth && !isAuthenticated;
+          const menuItem = (
             <ListItemButton
               key={item.text}
-              onClick={() => handleMenuClick(item.path)}
+              onClick={() => handleMenuClick(item.path, item.requiresAuth)}
               selected={location.pathname === item.path}
+              disabled={isDisabled}
               sx={{
                 mb: 1,
                 borderRadius: 1,
                 mx: 1,
                 transition: 'background-color 0.3s, transform 0.2s ease',
                 transform: 'translateY(0)',
+                opacity: isDisabled ? 0.5 : 1,
                 '&.Mui-selected': {
                   backgroundColor: '#7b59f9',
                   color: '#fff',
@@ -106,25 +90,52 @@ function Layout({ children }) {
                   },
                 },
                 '&:hover': {
-                  backgroundColor: '#7b59f9cc',
+                  backgroundColor: isDisabled ? 'transparent' : '#7b59f9cc',
                   color: '#fff',
-                  transform: 'translateY(-3px)',
+                  transform: isDisabled ? 'none' : 'translateY(-3px)',
                   '& .MuiListItemIcon-root': {
-                    color: '#fff',
+                    color: isDisabled ? '#cfcfff' : '#fff',
                   },
                 },
+                '&.Mui-disabled': {
+                  opacity: 0.5,
+                }
               }}
             >
               <ListItemIcon
                 sx={{ 
-                  color: location.pathname === item.path ? '#fff' : '#cfcfff',
+                  color: location.pathname === item.path && !isDisabled ? '#fff' : '#cfcfff',
+                  opacity: isDisabled ? 0.5 : 1
                 }}
               >
                 {item.icon}
               </ListItemIcon>
               <ListItemText primary={item.text} />
+              {isDisabled && (
+                <LockIcon 
+                  sx={{ 
+                    fontSize: 16, 
+                    ml: 1, 
+                    opacity: 0.7,
+                    color: '#cfcfff' 
+                  }} 
+                />
+              )}
             </ListItemButton>
-          ))}
+          );
+
+          return isDisabled ? (
+            <Tooltip 
+              key={item.text}
+              title="Requiere conexión con Google" 
+              placement="right"
+            >
+              <Box>{menuItem}</Box>
+            </Tooltip>
+          ) : (
+            menuItem
+          );
+        })}
       </List>
       <Box sx={{ p: 2, textAlign: 'center', fontSize: '0.85rem', opacity: 0.6 }}>
         © 2025 Kommo Bot

@@ -42,22 +42,6 @@ function Contacts() {
   const [selectedFile, setSelectedFile] = useState(null);
   const [isUploading, setIsUploading] = useState(false);
 
-  // Verificación simple de token
-  useEffect(() => {
-    const token = localStorage.getItem('token');
-    const kommoToken = localStorage.getItem('kommoToken');
-    const googleToken = localStorage.getItem('googleToken');
-    
-    // Permitir acceso si hay cualquiera de los tokens
-    if (!token && !kommoToken && !googleToken) {
-      navigate('/', { replace: true });
-      return;
-    }
-    
-    // Cargar contactos al entrar a la página
-    dispatch(fetchContacts());
-  }, [dispatch, navigate]);
-
   useEffect(() => {
     const params = new URLSearchParams(location.search);
     const authStatus = params.get('auth');

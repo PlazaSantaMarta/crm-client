@@ -66,13 +66,9 @@ const KommoModal = ({ isOpen, onClose, onSubmit }) => {
         }
       );
 
-      const { token, refreshToken, user, kommo_credentials } = response.data;
+      const { token, user, kommo_credentials } = response.data;
 
-      // Guardar los tokens JWT en localStorage
-      localStorage.setItem('token', token);
-      localStorage.setItem('refreshToken', refreshToken);
-      
-      // Guardar el token de kommo para compatibilidad
+      // Guardar el token en localStorage
       localStorage.setItem('kommoToken', token);
       
       // Configurar el token en los headers por defecto de axios
@@ -80,16 +76,9 @@ const KommoModal = ({ isOpen, onClose, onSubmit }) => {
       
       setSuccessMessage(activeTab === 'register' ? '¡Registro exitoso!' : '¡Conexión exitosa!');
       
-      // Guardar información del usuario en localStorage para rápido acceso
-      localStorage.setItem('user', JSON.stringify({
-        id: user.id,
-        username: user.username
-      }));
-      
       // Llamar a onSubmit con los datos necesarios
       onSubmit({
         token,
-        refreshToken,
         user,
         kommo_credentials
       });
@@ -259,17 +248,11 @@ const KommoModal = ({ isOpen, onClose, onSubmit }) => {
           </Alert>
         )}
       </DialogContent>
-      <DialogActions sx={{ p: 2, borderTop: `1px solid ${theme.palette.divider}` }}>
+      <DialogActions sx={{ p: 2 }}>
         <Button 
           onClick={handleClose} 
-          color="secondary"
-          variant="outlined"
-          sx={{ 
-            mr: 1,
-            '&:hover': {
-              backgroundColor: 'rgba(255,255,255,0.05)',
-            }
-          }}
+          color="primary"
+          disabled={isLoading}
         >
           Cancelar
         </Button>
@@ -278,17 +261,12 @@ const KommoModal = ({ isOpen, onClose, onSubmit }) => {
           color="primary" 
           variant="contained"
           disabled={isLoading}
-          startIcon={isLoading && <CircularProgress size={20} color="inherit" />}
-          sx={{ 
-            minWidth: '120px',
-            position: 'relative',
-            '&:hover': {
-              transform: 'translateY(-2px)',
-              boxShadow: '0 4px 8px rgba(0,0,0,0.2)',
-            }
-          }}
         >
-          {isLoading ? 'Procesando...' : (activeTab === 'register' ? 'Registrarse' : 'Iniciar Sesión')}
+          {isLoading ? (
+            <CircularProgress size={24} color="inherit" />
+          ) : (
+            activeTab === 'register' ? 'Registrarse' : 'Iniciar Sesión'
+          )}
         </Button>
       </DialogActions>
     </Dialog>

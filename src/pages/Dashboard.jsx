@@ -5,22 +5,22 @@ import { useNavigate } from 'react-router-dom';
 import {
   Box, Card, CardContent, Typography, Button, Grid,
   Dialog, DialogContent, DialogTitle, DialogActions,
-  Alert, Snackbar
+  Alert, Snackbar, Paper
 } from '@mui/material';
 import {
   LogoutOutlined as LogoutIcon, Google as GoogleIcon,
   SyncAlt as SyncIcon, ContactPhone as ContactsIcon,
-  Link as LinkIcon
+  Link as LinkIcon // Importa LinkIcon para el botón de Kommo
 } from '@mui/icons-material';
 import { fetchContacts } from '../store/slices/contactsSlice';
 import api from '../config/api';
 import { useTheme } from '@mui/material/styles';
-import KommoModal from '../components/KommoModal';
+import KommoModal from '../components/KommoModal'; // Importa el modal de Kommo
 
 function Dashboard() {
   const dispatch = useDispatch();
   const navigate = useNavigate();
-  const theme = useTheme();
+  const theme = useTheme(); // Obtén el tema para usar sus colores y sombras
 
   // Estados de la aplicación
   const { items: contacts, status } = useSelector((state) => state.contacts);
@@ -28,37 +28,20 @@ function Dashboard() {
   const [showSuccessMessage, setShowSuccessMessage] = useState(false);
   const [errorMessage, setErrorMessage] = useState(null);
   const [authWindow, setAuthWindow] = useState(null);
-  const [showKommoModal, setShowKommoModal] = useState(false);
-  const [kommoStatus, setKommoStatus] = useState('disconnected');
+  const [showKommoModal, setShowKommoModal] = useState(false); // Estado para el modal de Kommo
+  // NUEVO ESTADO: Para el estado de conexión de Kommo
+  // Lo inicializamos como 'disconnected' para que se vea el rojo por defecto.
+  const [kommoStatus, setKommoStatus] = useState('disconnected'); // Este estado no afecta al texto del botón de la cabecera con esta petición
   const [kommoConnected, setKommoConnected] = useState(false);
-  const [currentUser, setCurrentUser] = useState(null);
-  
-  // Efecto para cargar información del usuario desde localStorage
-  useEffect(() => {
-    const userJson = localStorage.getItem('user');
-    if (userJson) {
-      try {
-        const user = JSON.parse(userJson);
-        setCurrentUser(user);
-      } catch (e) {
-        console.error('Error al parsear información del usuario:', e);
-      }
-    }
-  }, []);
-  
   // Efecto para verificar el estado de autenticación y manejar mensajes de Google Auth
   useEffect(() => {
     checkAuthStatus();
-    checkKommoStatus();
+    checkKommoStatus(); // Nueva función para verificar el estado de Kommo
 
     const handleAuthMessage = async (event) => {
       if (event.origin === window.location.origin && event.data === 'google-auth-success') {
         authWindow?.close();
         setAuthWindow(null);
-        
-        // Marcar que tenemos una sesión de Google activa
-        localStorage.setItem('googleToken', 'active');
-        
         await checkAuthStatus();
         setErrorMessage(null);
         setShowSuccessMessage(true);
@@ -72,80 +55,78 @@ function Dashboard() {
   const checkAuthStatus = async () => {
     try {
       await dispatch(fetchContacts()).unwrap();
+      // Si fetchContacts tiene éxito, significa que Google está conectado.
+      // Puedes manejar esto más explícitamente si tu API de Google tiene un endpoint de estado.
     } catch (error) {
       if (!error.message?.includes('No autenticado') && !error.message?.includes('Sesión expirada')) {
         setErrorMessage(error.message || 'Error al verificar autenticación');
       } else {
+        // No es un error, simplemente no está autenticado o la sesión expiró.
         setErrorMessage(null);
       }
     }
   };
 
-  // Función de logout completa
   const logout = () => {
-    // Limpiar todos los tokens y datos de usuario
-    localStorage.removeItem('token');
-    localStorage.removeItem('refreshToken');
-    localStorage.removeItem('kommoToken');
-    localStorage.removeItem('user');
-    
-    // Limpiar headers de autenticación
-    delete api.defaults.headers.common['Authorization'];
-    
-    // Resetear estados
-    setKommoConnected(false);
-    setCurrentUser(null);
-    
-    // Limpiar store de Redux
+    localStorage.clear();
+    setKommoConnected(false); // Aseguramos que el estado de Kommo también se resetee
     dispatch({ type: 'contacts/clearAll' });
     dispatch({ type: 'messages/clearAll' });
     dispatch({ type: 'sync/clearAll' });
-    
-    // Mostrar mensaje y redirigir
     setErrorMessage(null);
     setShowSuccessMessage(true);
     setTimeout(() => { window.location.href = '/'; }, 1000);
   };
 
-  // Verificar estado de Kommo
+  // Añadir la función para verificar el estado de Kommo
   const checkKommoStatus = async () => {
     try {
-      const token = localStorage.getItem('token') || localStorage.getItem('kommoToken');
+      const token = localStorage.getItem('kommoToken');
       if (!token) {
         setKommoStatus('disconnected');
-        setKommoConnected(false);
         return;
       }
 
-      // Verificar si hay un usuario activo
-      const userJson = localStorage.getItem('user');
-      if (userJson) {
-        setKommoConnected(true);
-      }
+      setKommoConnected(true)
+
+      // Configurar el token en los headers
+      api.defaults.headers.common['Authorization'] = `Bearer ${token}`;
+
+      /* // Verificar el estado de la conexión
+      const response = await api.get('/api/kommo/connection-status'); */
+
+      /* if (response.data.success) {
+        setKommoStatus('connected');
+        setErrorMessage(null);
+      } else {
+        setKommoStatus('disconnected');
+        throw new Error(response.data.message);
+      } */
     } catch (error) {
       console.error('Error al verificar estado de Kommo:', error);
       setKommoStatus('disconnected');
-      setKommoConnected(false);
       if (error.response?.status === 401) {
-        localStorage.removeItem('token');
-        localStorage.removeItem('refreshToken');
+        // Token inválido o expirado, limpiar token
         localStorage.removeItem('kommoToken');
       }
     }
   };
 
-  // Función para cerrar sesión con confirmación
+  // Función para cerrar sesión (general)
   const handleLogout = async () => {
     try {
       await api.post('/api/auth/logout');
-      logout();
+      dispatch({ type: 'contacts/clearAll' });
+      dispatch({ type: 'messages/clearAll' });
+      dispatch({ type: 'sync/clearAll' });
+      localStorage.clear();
+      setErrorMessage(null);
+      setShowSuccessMessage(true);
+      setTimeout(() => { window.location.href = '/'; }, 1000); // Redirigir a la página de inicio
     } catch (error) {
       console.error('Error al cerrar sesión:', error);
       setErrorMessage('Error al cerrar sesión. Por favor, intenta nuevamente.');
       setShowSuccessMessage(false);
-      
-      // Intentar logout local si falla el servidor
-      logout();
     } finally {
       setShowLogoutConfirm(false);
     }
@@ -175,25 +156,16 @@ function Dashboard() {
     }
   };
 
-  // Manejar login/registro con Kommo
+  // Modificar handleKommoSubmit
   const handleKommoSubmit = async (authData) => {
     try {
-      // Guardar tokens JWT
-      localStorage.setItem('token', authData.token);
-      localStorage.setItem('refreshToken', authData.refreshToken);
+      // Guardar el token en localStorage
       localStorage.setItem('kommoToken', authData.token);
-      
-      // Guardar información del usuario
-      localStorage.setItem('user', JSON.stringify({
-        id: authData.user.id,
-        username: authData.user.username
-      }));
-      
-      setCurrentUser(authData.user);
 
       // Configurar el token en los headers
       api.defaults.headers.common['Authorization'] = `Bearer ${authData.token}`;
 
+      // Verificar la conexión inmediatamente
       await checkKommoStatus();
 
       setErrorMessage(null);
@@ -203,58 +175,20 @@ function Dashboard() {
       console.error('Error en la autenticación de Kommo:', error);
       setErrorMessage(error.response?.data?.message || 'Error al conectar con Kommo');
       setKommoStatus('disconnected');
-      setKommoConnected(false);
     }
   };
 
-  // Función específica para cerrar sesión de Kommo
+  // Añadir función para cerrar sesión de Kommo
   const handleKommoLogout = async () => {
     try {
-      // Llamar al endpoint correcto para cerrar sesión en el servidor
       await api.post('/api/auth/logout');
-      
-      // Eliminar solo los tokens relacionados con Kommo
       localStorage.removeItem('kommoToken');
-      
-      // Si el token principal es de Kommo, eliminarlo también
-      if (!localStorage.getItem('googleToken')) {
-        localStorage.removeItem('token');
-        localStorage.removeItem('refreshToken');
-        // Limpiar headers de autenticación
       delete api.defaults.headers.common['Authorization'];
-      }
-      
-      // Actualizar estado
-      setKommoConnected(false);
-      setCurrentUser(null);
-      
-      // Mostrar mensaje de éxito
-      setErrorMessage(null);
+      setKommoStatus('disconnected');
       setShowSuccessMessage(true);
-      
-      // Verificar estado actualizado
-      await checkKommoStatus();
     } catch (error) {
       console.error('Error al cerrar sesión de Kommo:', error);
-      
-      // Si el error es 401 (Unauthorized), limpiar tokens de todas formas
-      if (error.response?.status === 401) {
-        localStorage.removeItem('kommoToken');
-        
-        if (!localStorage.getItem('googleToken')) {
-          localStorage.removeItem('token');
-          localStorage.removeItem('refreshToken');
-          delete api.defaults.headers.common['Authorization'];
-        }
-        
-        setKommoConnected(false);
-        setCurrentUser(null);
-        setShowSuccessMessage(true);
-        await checkKommoStatus();
-      } else {
-        setErrorMessage('Error al cerrar sesión de Kommo. Por favor, intenta nuevamente.');
-        setShowSuccessMessage(false);
-      }
+      setErrorMessage('Error al cerrar sesión de Kommo');
     }
   };
 
@@ -262,22 +196,10 @@ function Dashboard() {
   const handleGoogleLogout = async () => {
     try {
       await api.post('/api/google/logout');
-      
-      // Limpiar solo los datos relacionados con Google
-      localStorage.removeItem('googleToken');
-      
-      // Si no hay token de Kommo activo, limpiar token principal
-      if (!localStorage.getItem('kommoToken')) {
-        localStorage.removeItem('token');
-        localStorage.removeItem('refreshToken');
-        // Limpiar headers de autenticación
-        delete api.defaults.headers.common['Authorization'];
-      }
-      
-      dispatch({ type: 'contacts/clearAll' });
+      dispatch({ type: 'contacts/clearAll' }); // Solo limpiamos los contactos de Google
       setErrorMessage(null);
       setShowSuccessMessage(true);
-      checkAuthStatus();
+      checkAuthStatus(); // Verificar el nuevo estado de autenticación
     } catch (error) {
       console.error('Error al cerrar sesión de Google:', error);
       setErrorMessage('Error al cerrar sesión de Google. Por favor, intenta nuevamente.');
@@ -294,16 +216,17 @@ function Dashboard() {
         <Grid item xs={12}>
           <Box display="flex" justifyContent="space-between" alignItems="center" mb={3}>
             <Typography variant="h4">Dashboard</Typography>
-            <Box>
-              {/* Botón de Kommo */}
+            <Box> {/* Contenedor para los botones de la esquina superior derecha */}
+              {/* Botón de Kommo en la cabecera: CAMBIO DE TEXTO SOLAMENTE */}
               <Button
                 variant="outlined"
                 startIcon={<LinkIcon />}
-                onClick={kommoConnected ? handleKommoLogout : () => setShowKommoModal(true)}
+                onClick={kommoConnected ? logout : () => setShowKommoModal(true)}
                 sx={{
                   mr: 2,
-                  borderColor: kommoConnected ? theme.palette.error.main : theme.palette.info.main,
-                  color: kommoConnected ? theme.palette.error.main : theme.palette.info.main,
+                  // Estilos dinámicos para el botón de Kommo
+                  borderColor: kommoConnected ? theme.palette.error.main : theme.palette.info.main, // Borde rojo si CONECTADO y es 'Cerrar Sesión Kommo', azul si 'Conectar Kommo'
+                  color: kommoConnected ? theme.palette.error.main : theme.palette.info.main,     // Texto e ícono rojos si CONECTADO y es 'Cerrar Sesión Kommo', azul si 'Conectar Kommo'
                   '&:hover': {
                     borderColor: kommoConnected ? theme.palette.error.dark : theme.palette.info.dark,
                     color: kommoConnected ? theme.palette.error.dark : theme.palette.info.dark,
@@ -328,137 +251,249 @@ function Dashboard() {
           </Box>
         </Grid>
 
-        {/* Tarjetas principales */}
-        <Grid item xs={12} md={6}>
-          <Card sx={{ height: '100%', display: 'flex', flexDirection: 'column' }}>
-            <CardContent sx={{ flex: 1 }}>
-              <Typography variant="h5" color="primary.light" gutterBottom>
-                Contactos de Google
+        {/* BARRA PRINCIPAL "Vincular Kommo" - Mantiene el estilo oscuro con hover gris */}
+        <Grid item xs={12}>
+          {!kommoConnected ?
+            (<Button
+              variant="contained"
+              onClick={() => setShowKommoModal(true)}
+              sx={{
+                width: '100%',
+                minHeight: '150px',
+                padding: '20px 30px',
+                borderRadius: '12px',
+                boxShadow: theme.shadows[8],
+                mb: 3,
+                bgcolor: 'rgba(30, 30, 30, 1)',
+                color: 'white',
+                display: 'flex',
+                flexDirection: 'column',
+                alignItems: 'center',
+                justifyContent: 'center',
+                textTransform: 'none',
+                transition: 'transform 0.2s ease-in-out, box-shadow 0.2s ease-in-out',
+                '&:hover': {
+                  transform: 'translateY(-3px)',
+                  boxShadow: theme.shadows[10],
+                  bgcolor: 'rgba(45, 45, 45, 1)',
+                },
+                '& .MuiButton-startIcon, & .MuiButton-endIcon': {
+                  margin: 0,
+                },
+              }}
+            >
+              <LinkIcon sx={{
+                fontSize: 40,
+                mb: 0.5,
+                color: 'grey.400' // Icono gris cuando está desconectado
+              }} />
+              <Typography
+                variant="h3"
+                sx={{
+                  fontWeight: 'bold',
+                  lineHeight: 1.2,
+                  mb: 0.5,
+                  color: 'white'
+                }}
+              >
+                Vincular Kommo
               </Typography>
-              
-              {status === 'loading' && (
-                <Typography>Cargando contactos...</Typography>
-              )}
-              
-              {status === 'failed' && (
-                <Box>
-                  <Typography color="error" gutterBottom>
-                    No se pudieron cargar los contactos.
+              <Typography
+                variant="h6"
+                color="error.main" // Texto de estado rojo
+              >
+                Desconectado
               </Typography>
+            </Button>) : (
+              // Este es el botón para cerrar sesión de Kommo, ahora con estética VERDE cuando está conectado
               <Button
                 variant="contained"
-                    color="primary" 
-                    onClick={handleConnectGoogle}
-                    startIcon={<GoogleIcon />}
-                    sx={{ mt: 2 }}
+                onClick={logout} // Aquí se llama a la función 'logout'
+                sx={{
+                  width: '100%',
+                  minHeight: '150px',
+                  padding: '20px 30px',
+                  borderRadius: '12px',
+                  boxShadow: theme.shadows[8],
+                  mb: 3,
+                  bgcolor: 'rgba(30, 30, 30, 1)', // Fondo oscuro
+                  color: 'white', // Texto blanco
+                  display: 'flex',
+                  flexDirection: 'column',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  textTransform: 'none',
+                  transition: 'transform 0.2s ease-in-out, box-shadow 0.2s ease-in-out',
+                  '&:hover': {
+                    transform: 'translateY(-3px)',
+                    boxShadow: theme.shadows[10],
+                    bgcolor: 'rgba(45, 45, 45, 1)', // Hover a gris más claro
+                  },
+                  '& .MuiButton-startIcon, & .MuiButton-endIcon': {
+                    margin: 0,
+                  },
+                }}
+              >
+                <LinkIcon sx={{
+                  fontSize: 40,
+                  mb: 0.5,
+                  color: 'success.main' // Icono VERDE cuando está conectado
+                }} />
+                <Typography
+                  variant="h3"
+                  sx={{
+                    fontWeight: 'bold',
+                    lineHeight: 1.2,
+                    mb: 0.5,
+                    color: 'white'
+                  }}
+                >
+                  Cerrar Sesión Kommo
+                </Typography>
+                <Typography
+                  variant="h6"
+                  color="success.main" // Texto de estado VERDE
+                >
+                  Conectado (Haz clic para desconectar)
+                </Typography>
+              </Button>
+            )}
+        </Grid>
+
+        {/* Tarjeta: Contactos Sincronizados - Aplicando el estilo oscuro con hover gris */}
+        <Grid item xs={12} md={4}>
+          <Paper
+            elevation={3}
+            sx={{
+              p: 2, height: '100%', display: 'flex', flexDirection: 'column',
+              alignItems: 'center', justifyContent: 'center', gap: 2,
+              // Fondos oscuros y efecto hover a gris
+              bgcolor: 'rgba(30, 30, 30, 1)',
+              color: 'white', // Texto blanco por defecto en toda la tarjeta
+              transition: 'transform 0.2s ease-in-out, box-shadow 0.2s ease-in-out',
+              '&:hover': {
+                transform: 'translateY(-5px)',
+                boxShadow: theme.shadows[8],
+                cursor: 'pointer',
+                bgcolor: 'rgba(45, 45, 45, 1)', // Hover a gris más claro
+              },
+            }}
+            onClick={() => navigate('/contacts')}
           >
+            <ContactsIcon sx={{ fontSize: 60, color: 'success.main' }} />
+            <Typography variant="h6" align="center" sx={{ color: 'white' }}>Contactos Sincronizados</Typography>
+            <Typography variant="h3" color="success.main" sx={{ fontWeight: 'bold' }}>{contacts.length}</Typography>
+            <Typography variant="body2" align="center" sx={{ color: 'grey.400' }}>Total de contactos disponibles para sincronizar</Typography>
+          </Paper>
+        </Grid>
+
+        {/* Tarjeta: Estado de Conexión Google - Aplicando el estilo oscuro con hover gris */}
+        <Grid item xs={12} md={4}>
+          <Card
+            sx={{
+              height: '100%',
+              // Fondos oscuros y efecto hover a gris
+              bgcolor: 'rgba(30, 30, 30, 1)',
+              color: 'white', // Texto blanco por defecto en toda la tarjeta
+              transition: 'transform 0.2s ease-in-out, box-shadow 0.2s ease-in-out',
+              '&:hover': {
+                transform: 'translateY(-5px)',
+                boxShadow: theme.shadows[8],
+                cursor: 'pointer',
+                bgcolor: 'rgba(45, 45, 45, 1)', // Hover a gris más claro
+              },
+            }}
+          >
+            <CardContent>
+              <Box display="flex" flexDirection="column" alignItems="center" gap={2}>
+                <GoogleIcon sx={{ fontSize: 60, color: status === 'succeeded' ? 'success.main' : 'grey.400' }} />
+                <Typography variant="h6" sx={{ color: 'white' }}>Estado de Conexión</Typography>
+                <Typography variant="body1" color={status === 'succeeded' ? 'success.main' : 'error.main'}>
+                  {status === 'succeeded' ? 'Conectado' : 'No Conectado'}
+                </Typography>
+                {status !== 'succeeded' && (
+                  <Button variant="contained" startIcon={<GoogleIcon />} onClick={handleConnectGoogle}>
                     Conectar con Google
                   </Button>
-                </Box>
-              )}
-              
-              {status === 'succeeded' && (
-                <Box>
-                  <Typography variant="h6" color="text.secondary" gutterBottom>
-                    {contacts.length} contactos disponibles
-                  </Typography>
-                  <Button 
-                    variant="contained" 
-                    color="primary" 
-                    onClick={() => navigate('/contacts')}
-                    startIcon={<ContactsIcon />}
-                    sx={{ mt: 2, mr: 2 }}
-                  >
-                    Ver Contactos
-                  </Button>
-                  <Button 
-                    variant="outlined" 
-                    color="secondary" 
-                    onClick={() => navigate('/sync')}
-                    startIcon={<SyncIcon />}
-                    sx={{ mt: 2 }}
-                  >
-                    Sincronizar
-                  </Button>
+                )}
               </Box>
-              )}
             </CardContent>
           </Card>
         </Grid>
 
-        <Grid item xs={12} md={6}>
-          <Card sx={{ height: '100%' }}>
+        {/* Tarjeta: Sincronización - Aplicando el estilo oscuro con hover gris */}
+        <Grid item xs={12} md={4}>
+          <Card
+            sx={{
+              height: '100%',
+              // Fondos oscuros y efecto hover a gris
+              bgcolor: 'rgba(30, 30, 30, 1)',
+              color: 'white', // Texto blanco por defecto en toda la tarjeta
+              transition: 'transform 0.2s ease-in-out, box-shadow 0.2s ease-in-out',
+              '&:hover': {
+                transform: 'translateY(-5px)',
+                boxShadow: theme.shadows[8],
+                cursor: 'pointer',
+                bgcolor: 'rgba(45, 45, 45, 1)', // Hover a gris más claro
+              },
+            }}
+            onClick={() => navigate('/sync')}
+          >
             <CardContent>
-              <Typography variant="h5" color="primary.light" gutterBottom>
-                Estado de conexiones
-              </Typography>
-              <Box sx={{ mt: 2 }}>
-                <Box sx={{ display: 'flex', alignItems: 'center', mb: 2 }}>
-                  <GoogleIcon sx={{ color: status === 'succeeded' ? 'success.main' : 'error.main', mr: 1 }} />
-                  <Typography>
-                    Google Contacts: {status === 'succeeded' ? 'Conectado' : 'Desconectado'}
+              <Box display="flex" flexDirection="column" alignItems="center" gap={2}>
+                <SyncIcon sx={{ fontSize: 60, color: status === 'succeeded' ? 'info.main' : 'grey.400' }} />
+                <Typography variant="h6" sx={{ color: 'white' }}>Sincronización</Typography>
+                <Button
+                  variant="contained" color="primary" onClick={() => navigate('/sync')} startIcon={<SyncIcon />}
+                  disabled={status !== 'succeeded'}
+                  sx={{ '&.Mui-disabled': { bgcolor: 'rgba(0, 0, 0, 0.12)', color: 'rgba(0, 0, 0, 0.26)' } }}
+                >
+                  {status === 'succeeded' ? 'Ir a Sincronización' : 'Requiere Conexión con Google'}
+                </Button>
+                {status !== 'succeeded' && (
+                  <Typography variant="body2" align="center" sx={{ color: 'grey.400' }}>
+                    Conecta tu cuenta de Google para acceder a la sincronización
                   </Typography>
-                </Box>
-                <Box sx={{ display: 'flex', alignItems: 'center' }}>
-                  <LinkIcon sx={{ color: kommoConnected ? 'success.main' : 'error.main', mr: 1 }} />
-                  <Typography>
-                    Kommo CRM: {kommoConnected ? 'Conectado' : 'Desconectado'}
-                  </Typography>
-                </Box>
+                )}
               </Box>
             </CardContent>
           </Card>
         </Grid>
       </Grid>
 
-      {/* Modal de confirmación de cierre de sesión */}
-      <Dialog open={showLogoutConfirm} onClose={() => setShowLogoutConfirm(false)}>
-        <DialogTitle>Cerrar Sesión de Google</DialogTitle>
+      {/* Diálogo de confirmación de cierre de sesión de Google */}
+      <Dialog open={showLogoutConfirm} onClose={() => setShowLogoutConfirm(false)} maxWidth="xs" fullWidth>
+        <DialogTitle>Confirmar cierre de sesión de Google</DialogTitle>
         <DialogContent>
           <Typography>
-            ¿Estás seguro de que deseas cerrar la sesión de Google? Esto eliminará tus contactos cargados.
+            ¿Estás seguro de que deseas cerrar la sesión de Google?
+            Esto desconectará tu cuenta de Google y no podrás acceder a tus contactos hasta que vuelvas a conectarte.
           </Typography>
         </DialogContent>
         <DialogActions>
-          <Button onClick={() => setShowLogoutConfirm(false)} color="primary">
-            Cancelar
-          </Button>
+          <Button onClick={() => setShowLogoutConfirm(false)}>Cancelar</Button>
           <Button onClick={handleGoogleLogout} color="error" variant="contained">
-            Cerrar Sesión
+            Cerrar Sesión de Google
           </Button>
         </DialogActions>
       </Dialog>
 
-      {/* Modal de Kommo */}
-      <KommoModal 
-        isOpen={showKommoModal} 
-        onClose={() => setShowKommoModal(false)}
-        onSubmit={handleKommoSubmit}
-      />
-
       {/* Snackbar para mensajes de éxito */}
-      <Snackbar
-        open={showSuccessMessage}
-        autoHideDuration={3000}
-        onClose={() => setShowSuccessMessage(false)}
-        anchorOrigin={{ vertical: 'bottom', horizontal: 'center' }}
-      >
-        <Alert onClose={() => setShowSuccessMessage(false)} severity="success">
-          Operación completada con éxito
+      <Snackbar open={showSuccessMessage} autoHideDuration={6000} onClose={() => setShowSuccessMessage(false)} anchorOrigin={{ vertical: 'bottom', horizontal: 'left' }}>
+        <Alert onClose={() => setShowSuccessMessage(false)} severity="success" sx={{ width: '100%' }}>
+          Operación realizada con éxito.
         </Alert>
       </Snackbar>
 
       {/* Snackbar para mensajes de error */}
-      <Snackbar
-        open={Boolean(errorMessage)}
-        autoHideDuration={5000}
-        onClose={() => setErrorMessage(null)}
-        anchorOrigin={{ vertical: 'bottom', horizontal: 'center' }}
-      >
-        <Alert onClose={() => setErrorMessage(null)} severity="error">
+      <Snackbar open={!!errorMessage} autoHideDuration={6000} onClose={() => setErrorMessage(null)} anchorOrigin={{ vertical: 'bottom', horizontal: 'left' }}>
+        <Alert onClose={() => setErrorMessage(null)} severity="error" sx={{ width: '100%' }}>
           {errorMessage}
         </Alert>
       </Snackbar>
+
+      {/* Componente Modal para Kommo */}
+      <KommoModal isOpen={showKommoModal} onClose={() => setShowKommoModal(false)} onSubmit={handleKommoSubmit} />
     </Box>
   );
 }

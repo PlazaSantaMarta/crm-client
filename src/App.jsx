@@ -1,8 +1,8 @@
 import React, { useEffect } from 'react';
-import { BrowserRouter as Router, Routes, Route, Navigate, useNavigate, useLocation } from 'react-router-dom';
+import { BrowserRouter as Router, Routes, Route, useNavigate, useLocation } from 'react-router-dom';
 import { ThemeProvider, createTheme } from '@mui/material/styles';
 import CssBaseline from '@mui/material/CssBaseline';
-import { Provider, useSelector, useDispatch } from 'react-redux';
+import { Provider } from 'react-redux';
 import { store } from './store';
 import { fetchContacts } from './store/slices/contactsSlice';
 
@@ -111,11 +111,9 @@ const theme = createTheme({
   },
 });
 
-// Componente para manejar la autenticación de Google
 function AuthHandler() {
   const navigate = useNavigate();
   const location = useLocation();
-  const dispatch = useDispatch();
 
   useEffect(() => {
     const params = new URLSearchParams(location.search);
@@ -124,16 +122,15 @@ function AuthHandler() {
     if (authStatus) {
       window.history.replaceState({}, document.title, window.location.pathname);
       if (authStatus === 'success') {
-        dispatch(fetchContacts());
+        store.dispatch(fetchContacts());
       }
       navigate('/');
     }
-  }, [location, navigate, dispatch]);
+  }, [location, navigate]);
 
   return null;
 }
 
-// Contenido principal de la aplicación
 function AppContent() {
   return (
     <Routes>
@@ -144,7 +141,6 @@ function AppContent() {
   );
 }
 
-// Componente principal de la aplicación
 function App() {
   return (
     <Provider store={store}>
