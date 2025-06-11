@@ -139,6 +139,7 @@ function Dashboard() {
       if (response.data?.authUrl) {
         // Abre la ventana de autenticación de Google
         const newWindow = window.open(response.data.authUrl, 'Google Auth', 'width=600,height=800,left=' + (window.screenX + (window.outerWidth - 600) / 2) + ',top=' + (window.screenY + (window.outerHeight - 800) / 2));
+        console.log(newWindow);
         setAuthWindow(newWindow);
         // Monitorear si la ventana se cierra
         const checkWindow = setInterval(() => {

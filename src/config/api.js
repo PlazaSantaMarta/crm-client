@@ -15,7 +15,17 @@ api.interceptors.response.use(
   response => response,
   error => {
     if (error.response?.status === 401) {
-      console.error('Error de autenticación:', error);
+      // Si el error es de autenticación de Google
+      if (error.response.data?.message?.includes('Google')) {
+        console.error('Error de autenticación de Google:', error);
+        // Limpiar el estado relacionado con Google si es necesario
+        localStorage.removeItem('googleAuth');
+      }
+      // Si el error es de autenticación de Kommo
+      else if (error.response.data?.message?.includes('Kommo')) {
+        console.error('Error de autenticación de Kommo:', error);
+        localStorage.removeItem('kommoToken');
+      }
     }
     return Promise.reject(error);
   }
